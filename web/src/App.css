@@ -228,6 +228,15 @@ header h1 {
 .t-bench {
   font-weight: 700;
 }
+.t-highlight {
+  background: rgba(34, 197, 94, 0.07);
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.ch-active {
+  color: var(--green);
+}
 .t-tks {
   font-weight: 700;
 }

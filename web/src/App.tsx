@@ -84,8 +84,10 @@ function ListPage() {
             return modeRank[ra.mode] - modeRank[rb.mode];
           return (rb.tks ?? -1) - (ra.tks ?? -1);
         }
-        // No HW detected: smaller file = probably faster
-        return a.variants[0].file_gb - b.variants[0].file_gb;
+        // No HW detected: best score-per-GB (smartest small models first)
+        const effA = a.bench / a.variants[0].file_gb;
+        const effB = b.bench / b.variants[0].file_gb;
+        return effB - effA;
       }
       if (sortBy === "size") {
         return a.variants[0].file_gb - b.variants[0].file_gb;
@@ -115,10 +117,10 @@ function ListPage() {
 
       <div className="col-header">
         <span className="ch-name">Model</span>
-        <span className="ch-r">Score</span>
-        <span className="ch-r">Size</span>
+        <span className={`ch-r ${sortBy === "score" ? "ch-active" : ""}`}>Score</span>
+        <span className={`ch-r ${sortBy === "size" ? "ch-active" : ""}`}>Size</span>
         <span className="ch-r">Context</span>
-        <span className="ch-r">Speed</span>
+        <span className={`ch-r ${sortBy === "speed" ? "ch-active" : ""}`}>Speed</span>
         <span className="ch-c">Run</span>
         <span className="ch-c">Grade</span>
       </div>
@@ -137,10 +139,10 @@ function ListPage() {
                 <span className="t-name">{m.name}</span>
                 <span className="t-params">{m.params_b}B</span>
               </div>
-              <span className="t-r t-mono t-bench" style={{ color: benchColor(m.bench) }}>{m.bench}</span>
-              <span className="t-r t-mono">{bestV.file_gb} GB</span>
+              <span className={`t-r t-mono t-bench ${sortBy === "score" ? "t-highlight" : ""}`} style={{ color: benchColor(m.bench) }}>{m.bench}</span>
+              <span className={`t-r t-mono ${sortBy === "size" ? "t-highlight" : ""}`}>{bestV.file_gb} GB</span>
               <span className="t-r t-mono t-dim">{(m.context / 1024).toFixed(0)}K</span>
-              <span className="t-r t-mono t-tks" style={{ color: tksColor(tks, mode) }}>
+              <span className={`t-r t-mono t-tks ${sortBy === "speed" ? "t-highlight" : ""}`} style={{ color: tksColor(tks, mode) }}>
                 {ready ? (tks !== null ? `~${tks} tok/s` : "—") : "—"}
               </span>
               <span className="t-c">{ready && <ModeIcon mode={mode} />}</span>
