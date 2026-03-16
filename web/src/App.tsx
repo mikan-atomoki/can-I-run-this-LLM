@@ -140,11 +140,12 @@ function ListPage() {
 
   const goModel = (m: Model) => nav(`/model/${slugify(m.name)}`);
 
-  const rows = useMemo(() => {
+  const { runnable: runnableRows, cantRun: cantRunRows } = useMemo(() => {
     const filtered = models.filter((m) =>
       m.name.toLowerCase().includes(search.toLowerCase())
     );
-    return [...filtered].sort((a, b) => {
+
+    const sortFn = (a: Model, b: Model) => {
       if (sortBy === "speed") {
         if (ready) {
           const ra = bestEval(a, hw), rb = bestEval(b, hw);
@@ -157,7 +158,17 @@ function ListPage() {
       if (sortBy === "size") return a.variants[0].file_gb - b.variants[0].file_gb;
       if (b.bench !== a.bench) return b.bench - a.bench;
       return a.params_b - b.params_b;
-    });
+    };
+
+    if (!ready) return { runnable: [...filtered].sort(sortFn), cantRun: [] as Model[] };
+
+    const run: Model[] = [];
+    const no: Model[] = [];
+    for (const m of filtered) {
+      const r = bestEval(m, hw);
+      if (r.mode === "no") no.push(m); else run.push(m);
+    }
+    return { runnable: run.sort(sortFn), cantRun: no.sort(sortFn) };
   }, [hw, search, sortBy, ready]);
 
   return (
@@ -203,14 +214,11 @@ function ListPage() {
       </div>
 
       <div className="table-body">
-        {rows.map((m) => {
-          const r = ready ? bestEval(m, hw) : null;
-          const mode = r?.mode ?? "no";
-          const tks = r?.tks ?? null;
-          const g = ready ? gradeInfo(tks, mode) : { letter: "?", color: "#555" };
-
+        {runnableRows.map((m) => {
+          const r = bestEval(m, hw);
+          const g = gradeInfo(r.tks, r.mode);
           return (
-            <div key={m.name} className={`trow ${mode === "no" && ready ? "trow-off" : ""}`} onClick={() => goModel(m)}>
+            <div key={m.name} className="trow" onClick={() => goModel(m)}>
               <div className="trow-name">
                 <span className="t-name">{m.name}</span>
                 <div className="t-tags">
@@ -220,16 +228,43 @@ function ListPage() {
               <span className={`t-r t-mono t-bench ${sortBy === "score" ? "t-hl" : ""}`} style={{ color: benchColor(m.bench) }}>{m.bench}</span>
               <span className={`t-r t-mono ${sortBy === "size" ? "t-hl" : ""}`}>{m.variants[0].file_gb} GB</span>
               <span className="t-r t-mono t-dim">{(m.context / 1024).toFixed(0)}K</span>
-              <span className={`t-r t-mono t-tks ${sortBy === "speed" ? "t-hl" : ""}`} style={{ color: tksColor(tks, mode) }}>
-                {ready ? (tks !== null ? `~${tks}` : "—") : "—"}
+              <span className={`t-r t-mono t-tks ${sortBy === "speed" ? "t-hl" : ""}`} style={{ color: tksColor(r.tks, r.mode) }}>
+                {r.tks !== null ? `~${r.tks}` : "—"}
               </span>
-              <span className="t-c">{ready && <ModeIcon mode={mode} />}</span>
+              <span className="t-c"><ModeIcon mode={r.mode} /></span>
               <span className="t-c t-grade" style={{ color: g.color }}>{g.letter}</span>
               <span className="t-arrow">›</span>
             </div>
           );
         })}
       </div>
+
+      {ready && cantRunRows.length > 0 && (
+        <>
+          <div className="cant-run-divider">
+            <span>Can't run on this device ({cantRunRows.length})</span>
+          </div>
+          <div className="table-body table-body-off">
+            {cantRunRows.map((m) => (
+              <div key={m.name} className="trow trow-off" onClick={() => goModel(m)}>
+                <div className="trow-name">
+                  <span className="t-name">{m.name}</span>
+                  <div className="t-tags">
+                    {m.tags.map((t) => <span key={t} className="t-tag" title={TAG_LABEL[t]?.name}>{TAG_LABEL[t]?.icon}</span>)}
+                  </div>
+                </div>
+                <span className="t-r t-mono t-bench" style={{ color: benchColor(m.bench) }}>{m.bench}</span>
+                <span className="t-r t-mono">{m.variants[0].file_gb} GB</span>
+                <span className="t-r t-mono t-dim">{(m.context / 1024).toFixed(0)}K</span>
+                <span className="t-r t-mono" style={{ color: "#ef4444" }}>✕</span>
+                <span className="t-c"><ModeIcon mode="no" /></span>
+                <span className="t-c t-grade" style={{ color: "#ef4444" }}>F</span>
+                <span className="t-arrow">›</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }

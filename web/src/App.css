@@ -112,6 +112,34 @@ header h1 {
 }
 
 /* ── Filters ──────────────────── */
+/* ── Can't run divider ────────── */
+.cant-run-divider {
+  text-align: center;
+  padding: 16px 0 8px;
+  margin-top: 8px;
+}
+.cant-run-divider span {
+  font-size: 0.72em;
+  font-family: var(--mono);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--bg);
+  padding: 0 12px;
+  position: relative;
+}
+.cant-run-divider::before {
+  content: "";
+  display: block;
+  height: 1px;
+  background: var(--border);
+  position: relative;
+  top: 10px;
+}
+.table-body-off {
+  opacity: 0.5;
+}
+
 /* ── Recommendations ──────────── */
 .rec-section {
   margin-bottom: 24px;
