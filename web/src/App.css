@@ -300,8 +300,8 @@ header h1 {
 /* ── Column headers ───────────── */
 .col-header {
   display: grid;
-  grid-template-columns: 1fr 52px 72px 64px 100px 40px 40px;
-  padding: 8px 16px 8px 40px;
+  grid-template-columns: 1fr 64px 72px 52px 90px 36px 36px;
+  padding: 8px 16px 8px 16px;
   font-size: 0.68em;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -320,7 +320,7 @@ header h1 {
 
 .trow {
   display: grid;
-  grid-template-columns: 1fr 52px 72px 64px 100px 40px 40px 20px;
+  grid-template-columns: 1fr 64px 72px 52px 90px 36px 36px 20px;
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid #151515;
