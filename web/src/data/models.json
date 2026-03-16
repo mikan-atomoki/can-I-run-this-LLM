@@ -3,6 +3,8 @@
     "name": "Llama 3.1 8B",
     "params_b": 8.03,
     "context": 131072,
+    "hf": "meta-llama/Llama-3.1-8B-Instruct",
+    "gguf": "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
     "config": { "heads": 32, "kv_heads": 8, "hidden": 4096, "layers": 32 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 4.92, "bpw": 4.6 },
@@ -16,6 +18,8 @@
     "name": "Llama 3.2 3B",
     "params_b": 3.21,
     "context": 131072,
+    "hf": "meta-llama/Llama-3.2-3B-Instruct",
+    "gguf": "bartowski/Llama-3.2-3B-Instruct-GGUF",
     "config": { "heads": 24, "kv_heads": 8, "hidden": 3072, "layers": 28 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 2.02, "bpw": 4.6 },
@@ -29,6 +33,8 @@
     "name": "Llama 3.2 1B",
     "params_b": 1.24,
     "context": 131072,
+    "hf": "meta-llama/Llama-3.2-1B-Instruct",
+    "gguf": "bartowski/Llama-3.2-1B-Instruct-GGUF",
     "config": { "heads": 32, "kv_heads": 8, "hidden": 2048, "layers": 16 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 0.82, "bpw": 4.6 },
@@ -42,6 +48,8 @@
     "name": "Llama 3.3 70B",
     "params_b": 70.6,
     "context": 131072,
+    "hf": "meta-llama/Llama-3.3-70B-Instruct",
+    "gguf": "bartowski/Llama-3.3-70B-Instruct-GGUF",
     "config": { "heads": 64, "kv_heads": 8, "hidden": 8192, "layers": 80 },
     "variants": [
       { "quant": "Q3_K_M", "file_gb": 31.65, "bpw": 3.5 },
@@ -55,6 +63,8 @@
     "name": "Qwen 2.5 7B",
     "params_b": 7.62,
     "context": 131072,
+    "hf": "Qwen/Qwen2.5-7B-Instruct",
+    "gguf": "Qwen/Qwen2.5-7B-Instruct-GGUF",
     "config": { "heads": 28, "kv_heads": 4, "hidden": 3584, "layers": 28 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 4.68, "bpw": 4.6 },
@@ -68,6 +78,8 @@
     "name": "Qwen 2.5 14B",
     "params_b": 14.8,
     "context": 131072,
+    "hf": "Qwen/Qwen2.5-14B-Instruct",
+    "gguf": "Qwen/Qwen2.5-14B-Instruct-GGUF",
     "config": { "heads": 40, "kv_heads": 8, "hidden": 5120, "layers": 48 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 9.03, "bpw": 4.6 },
@@ -81,6 +93,8 @@
     "name": "Qwen 2.5 32B",
     "params_b": 32.8,
     "context": 131072,
+    "hf": "Qwen/Qwen2.5-32B-Instruct",
+    "gguf": "Qwen/Qwen2.5-32B-Instruct-GGUF",
     "config": { "heads": 40, "kv_heads": 8, "hidden": 5120, "layers": 64 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 19.85, "bpw": 4.6 },
@@ -93,6 +107,8 @@
     "name": "Qwen 2.5 72B",
     "params_b": 72.7,
     "context": 131072,
+    "hf": "Qwen/Qwen2.5-72B-Instruct",
+    "gguf": "Qwen/Qwen2.5-72B-Instruct-GGUF",
     "config": { "heads": 64, "kv_heads": 8, "hidden": 8192, "layers": 80 },
     "variants": [
       { "quant": "Q3_K_M", "file_gb": 33.16, "bpw": 3.5 },
@@ -103,9 +119,25 @@
     ]
   },
   {
+    "name": "Qwen 2.5 Coder 32B",
+    "params_b": 32.8,
+    "context": 131072,
+    "hf": "Qwen/Qwen2.5-Coder-32B-Instruct",
+    "gguf": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF",
+    "config": { "heads": 40, "kv_heads": 8, "hidden": 5120, "layers": 64 },
+    "variants": [
+      { "quant": "Q4_K_M", "file_gb": 19.85, "bpw": 4.6 },
+      { "quant": "Q5_K_M", "file_gb": 23.74, "bpw": 5.5 },
+      { "quant": "Q6_K",   "file_gb": 26.89, "bpw": 6.5 },
+      { "quant": "Q8_0",   "file_gb": 34.81, "bpw": 8.0 }
+    ]
+  },
+  {
     "name": "Mistral 7B v0.3",
     "params_b": 7.25,
     "context": 32768,
+    "hf": "mistralai/Mistral-7B-Instruct-v0.3",
+    "gguf": "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
     "config": { "heads": 32, "kv_heads": 8, "hidden": 4096, "layers": 32 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 4.37, "bpw": 4.6 },
@@ -119,6 +151,8 @@
     "name": "Mistral Small 24B",
     "params_b": 23.6,
     "context": 32768,
+    "hf": "mistralai/Mistral-Small-24B-Instruct-2501",
+    "gguf": "bartowski/Mistral-Small-24B-Instruct-2501-GGUF",
     "config": { "heads": 32, "kv_heads": 8, "hidden": 5120, "layers": 40 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 14.35, "bpw": 4.6 },
@@ -131,6 +165,8 @@
     "name": "DeepSeek R1 Distill Qwen 7B",
     "params_b": 7.62,
     "context": 131072,
+    "hf": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    "gguf": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
     "config": { "heads": 28, "kv_heads": 4, "hidden": 3584, "layers": 28 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 4.68, "bpw": 4.6 },
@@ -144,6 +180,8 @@
     "name": "DeepSeek R1 Distill Qwen 14B",
     "params_b": 14.8,
     "context": 131072,
+    "hf": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+    "gguf": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
     "config": { "heads": 40, "kv_heads": 8, "hidden": 5120, "layers": 48 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 9.03, "bpw": 4.6 },
@@ -156,6 +194,8 @@
     "name": "DeepSeek R1 Distill Qwen 32B",
     "params_b": 32.8,
     "context": 131072,
+    "hf": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+    "gguf": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
     "config": { "heads": 40, "kv_heads": 8, "hidden": 5120, "layers": 64 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 19.85, "bpw": 4.6 },
@@ -168,6 +208,8 @@
     "name": "DeepSeek R1 Distill Llama 70B",
     "params_b": 70.6,
     "context": 131072,
+    "hf": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+    "gguf": "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
     "config": { "heads": 64, "kv_heads": 8, "hidden": 8192, "layers": 80 },
     "variants": [
       { "quant": "Q3_K_M", "file_gb": 31.65, "bpw": 3.5 },
@@ -181,6 +223,8 @@
     "name": "Phi-4 14B",
     "params_b": 14.7,
     "context": 16384,
+    "hf": "microsoft/phi-4",
+    "gguf": "bartowski/phi-4-GGUF",
     "config": { "heads": 40, "kv_heads": 10, "hidden": 5120, "layers": 40 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 8.98, "bpw": 4.6 },
@@ -194,6 +238,8 @@
     "name": "Gemma 2 9B",
     "params_b": 9.24,
     "context": 8192,
+    "hf": "google/gemma-2-9b-it",
+    "gguf": "bartowski/gemma-2-9b-it-GGUF",
     "config": { "heads": 16, "kv_heads": 8, "hidden": 3584, "layers": 42 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 5.76, "bpw": 4.6 },
@@ -207,6 +253,8 @@
     "name": "Gemma 2 27B",
     "params_b": 27.23,
     "context": 8192,
+    "hf": "google/gemma-2-27b-it",
+    "gguf": "bartowski/gemma-2-27b-it-GGUF",
     "config": { "heads": 32, "kv_heads": 16, "hidden": 4608, "layers": 46 },
     "variants": [
       { "quant": "Q4_K_M", "file_gb": 16.52, "bpw": 4.6 },

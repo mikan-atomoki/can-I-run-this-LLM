@@ -17,6 +17,8 @@ export interface Model {
   context: number;
   config: ModelConfig;
   variants: Variant[];
+  hf?: string;
+  gguf?: string;
 }
 
 export interface RunResult {
