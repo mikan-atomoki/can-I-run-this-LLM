@@ -16,6 +16,7 @@ export interface Model {
   params_b: number;
   context: number;
   bench: number;       // MMLU-approximate score (0-100)
+  tags: string[];      // "chat" | "code" | "reasoning"
   config: ModelConfig;
   variants: Variant[];
   hf?: string;
