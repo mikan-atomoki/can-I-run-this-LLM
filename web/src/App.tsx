@@ -319,8 +319,14 @@ function App() {
             {loading ? <span className="hw-detecting">Detecting hardware…</span> : (
               <>
                 <div className="hw-item"><span className="hw-icon">⬡</span><span className="hw-val">{gpu?.gpuName ?? "Unknown"}</span></div>
-                {vram > 0 && <div className="hw-item"><span className="hw-label">VRAM</span><span className="hw-val">{vram} GB</span></div>}
-                {ram > 0 && <div className="hw-item"><span className="hw-label">RAM</span><span className="hw-val">{ram}+ GB</span></div>}
+                {gpu?.isAppleSilicon && gpu.unifiedMemory_gb ? (
+                  <div className="hw-item"><span className="hw-label">Unified</span><span className="hw-val">{gpu.unifiedMemory_gb} GB (~{vram} GB usable)</span></div>
+                ) : (
+                  <>
+                    {vram > 0 && <div className="hw-item"><span className="hw-label">VRAM</span><span className="hw-val">{vram} GB</span></div>}
+                    {ram > 0 && !gpu?.isAppleSilicon && <div className="hw-item"><span className="hw-label">RAM</span><span className="hw-val">{ram}+ GB</span></div>}
+                  </>
+                )}
                 {gpuBw > 0 && <div className="hw-item"><span className="hw-label">BW</span><span className="hw-val">~{gpuBw} GB/s</span></div>}
                 <span className="hw-badge">WebGPU</span>
               </>
