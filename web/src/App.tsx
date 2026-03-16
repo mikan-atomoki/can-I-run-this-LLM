@@ -75,20 +75,24 @@ function ListPage() {
     );
 
     return [...filtered].sort((a, b) => {
-      const ra = ready ? bestEval(a, hw) : null;
-      const rb = ready ? bestEval(b, hw) : null;
-
-      if (sortBy === "speed" && ready) {
-        const modeRank = { gpu: 0, cpu: 1, no: 2 };
-        const ma = ra?.mode ?? "no", mb = rb?.mode ?? "no";
-        if (modeRank[ma] !== modeRank[mb]) return modeRank[ma] - modeRank[mb];
-        return (rb?.tks ?? -1) - (ra?.tks ?? -1);
+      if (sortBy === "speed") {
+        if (ready) {
+          const ra = bestEval(a, hw);
+          const rb = bestEval(b, hw);
+          const modeRank = { gpu: 0, cpu: 1, no: 2 };
+          if (modeRank[ra.mode] !== modeRank[rb.mode])
+            return modeRank[ra.mode] - modeRank[rb.mode];
+          return (rb.tks ?? -1) - (ra.tks ?? -1);
+        }
+        // No HW detected: smaller file = probably faster
+        return a.variants[0].file_gb - b.variants[0].file_gb;
       }
       if (sortBy === "size") {
         return a.variants[0].file_gb - b.variants[0].file_gb;
       }
-      // score (default)
-      return b.bench - a.bench;
+      // score: by bench desc, then smaller params first as tiebreaker
+      if (b.bench !== a.bench) return b.bench - a.bench;
+      return a.params_b - b.params_b;
     });
   }, [hw, search, sortBy, ready]);
 
