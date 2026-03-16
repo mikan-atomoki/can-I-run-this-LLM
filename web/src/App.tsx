@@ -1,37 +1,34 @@
 import { useEffect, useState, createContext, useContext, useMemo } from "react";
 import { HashRouter, Routes, Route, useNavigate, useParams } from "react-router-dom";
 import { detectGpu, type GpuInfo } from "./lib/gpu";
-import { guessBandwidth } from "./lib/bandwidth";
-import { totalVram, canRun, estimateTokensPerSec, type Model } from "./lib/calc";
+import { guessGpuBandwidth, guessRamBandwidth } from "./lib/bandwidth";
+import { evaluate, totalVram, type Model, type RunMode, type RunInfo } from "./lib/calc";
 import modelsData from "./data/models.json";
 import "./App.css";
 
 const models = modelsData as Model[];
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-
-/* ── Context ──────────────────── */
-const GpuCtx = createContext<{ vram: number; bw: number }>({ vram: 0, bw: 0 });
-
-/* ── helpers ──────────────────── */
 const CTX = 4096;
 
-function bestResult(m: Model, vram: number, bw: number) {
+/* ── Context ──────────────────── */
+interface HwCtx { vram: number; gpuBw: number; ram: number; ramBw: number }
+const Hw = createContext<HwCtx>({ vram: 0, gpuBw: 0, ram: 0, ramBw: 0 });
+
+/* ── helpers ──────────────────── */
+
+function bestEval(m: Model, hw: HwCtx): RunInfo {
+  // Try largest variant that fits GPU first, then smallest for CPU
   for (let i = m.variants.length - 1; i >= 0; i--) {
-    const v = m.variants[i];
-    const need = totalVram(v, m.config, CTX);
-    if (canRun(need, vram) === "ok")
-      return { v, tks: estimateTokensPerSec(v, bw, vram), need, runnable: true };
+    const r = evaluate(m.variants[i], hw.vram, hw.gpuBw, hw.ram, hw.ramBw, m.config, CTX);
+    if (r.mode === "gpu") return r;
   }
-  const v = m.variants[0];
-  const need = totalVram(v, m.config, CTX);
-  const s = canRun(need, vram);
-  if (s !== "no")
-    return { v, tks: estimateTokensPerSec(v, bw, vram), need, runnable: true };
-  return { v, tks: null, need, runnable: false };
+  // No GPU fit → try smallest for CPU
+  const r = evaluate(m.variants[0], hw.vram, hw.gpuBw, hw.ram, hw.ramBw, m.config, CTX);
+  return r;
 }
 
-function tksColor(tks: number | null, ok: boolean): string {
-  if (!ok) return "#ef4444";
+function tksColor(tks: number | null, mode: RunMode): string {
+  if (mode === "no") return "#ef4444";
   if (tks === null) return "#666";
   if (tks >= 25) return "#22c55e";
   if (tks >= 12) return "#4ade80";
@@ -40,94 +37,99 @@ function tksColor(tks: number | null, ok: boolean): string {
   return "#ef4444";
 }
 
-function grade(tks: number | null, ok: boolean): { letter: string; color: string } {
-  if (!ok) return { letter: "F", color: "#ef4444" };
+function gradeInfo(tks: number | null, mode: RunMode) {
+  if (mode === "no") return { letter: "F", color: "#ef4444" };
   if (tks === null) return { letter: "?", color: "#666" };
   if (tks >= 30) return { letter: "S", color: "#22c55e" };
   if (tks >= 20) return { letter: "A", color: "#4ade80" };
   if (tks >= 12) return { letter: "B", color: "#a3e635" };
-  if (tks >= 6) return { letter: "C", color: "#facc15" };
-  if (tks >= 2) return { letter: "D", color: "#fb923c" };
+  if (tks >= 6)  return { letter: "C", color: "#facc15" };
+  if (tks >= 2)  return { letter: "D", color: "#fb923c" };
   return { letter: "F", color: "#ef4444" };
+}
+
+/** Small icon showing GPU / CPU / No */
+function ModeIcon({ mode }: { mode: RunMode }) {
+  if (mode === "gpu") return <span className="mode-icon mode-gpu" title="GPU inference">⚡</span>;
+  if (mode === "cpu") return <span className="mode-icon mode-cpu" title="CPU inference (slow)">🐢</span>;
+  return <span className="mode-icon mode-no" title="Cannot run">✕</span>;
 }
 
 /* ── List Page ────────────────── */
 
 function ListPage() {
-  const { vram, bw } = useContext(GpuCtx);
+  const hw = useContext(Hw);
   const nav = useNavigate();
   const [search, setSearch] = useState("");
+  const ready = hw.vram > 0 || hw.ram > 0;
 
   const rows = useMemo(() => {
     const filtered = models.filter((m) =>
       m.name.toLowerCase().includes(search.toLowerCase())
     );
-    if (vram <= 0) return filtered;
+    if (!ready) return filtered;
     return [...filtered].sort((a, b) => {
-      const ra = bestResult(a, vram, bw);
-      const rb = bestResult(b, vram, bw);
-      if (ra.runnable && !rb.runnable) return -1;
-      if (!ra.runnable && rb.runnable) return 1;
+      const ra = bestEval(a, hw);
+      const rb = bestEval(b, hw);
+      // GPU > CPU > no
+      const modeRank = { gpu: 0, cpu: 1, no: 2 };
+      if (modeRank[ra.mode] !== modeRank[rb.mode])
+        return modeRank[ra.mode] - modeRank[rb.mode];
       return (rb.tks ?? -1) - (ra.tks ?? -1);
     });
-  }, [vram, bw, search]);
+  }, [hw, search, ready]);
 
   return (
     <>
-      {/* Filter bar */}
       <div className="filters">
         <div className="search-box">
           <span className="search-icon">⌕</span>
           <input
-            type="text"
-            placeholder="Search models..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            type="text" placeholder="Search models..."
+            value={search} onChange={(e) => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      {/* Column headers */}
       <div className="col-header">
         <span className="ch-name">Model</span>
-        <span className="ch-col">Size</span>
-        <span className="ch-col">Context</span>
-        <span className="ch-col">Speed</span>
-        <span className="ch-grade">Grade</span>
+        <span className="ch-r">Size</span>
+        <span className="ch-r">Context</span>
+        <span className="ch-r">Speed</span>
+        <span className="ch-c">Run</span>
+        <span className="ch-c">Grade</span>
       </div>
 
-      {/* Rows */}
       <div className="table-body">
         {rows.map((m) => {
-          const r = vram > 0 ? bestResult(m, vram, bw) : null;
+          const r = ready ? bestEval(m, hw) : null;
+          const mode = r?.mode ?? "no";
           const tks = r?.tks ?? null;
-          const ok = r?.runnable ?? true;
-          const g = vram > 0 ? grade(tks, ok) : { letter: "?", color: "#555" };
-          const bestQuant = r?.v.quant ?? m.variants[0].quant;
-          const bestSize = r?.v.file_gb ?? m.variants[0].file_gb;
-          const ctxK = (m.context / 1024).toFixed(0);
+          const g = ready ? gradeInfo(tks, mode) : { letter: "?", color: "#555" };
+          const bestV = r ? m.variants.find(v => v.quant === (
+            // find the variant that produced this result
+            (() => { for (let i = m.variants.length - 1; i >= 0; i--) { const e = evaluate(m.variants[i], hw.vram, hw.gpuBw, hw.ram, hw.ramBw, m.config, CTX); if (e.mode === r.mode && e.tks === r.tks) return m.variants[i].quant; } return m.variants[0].quant; })()
+          )) ?? m.variants[0] : m.variants[0];
 
           return (
             <div
               key={m.name}
-              className={`trow ${!ok && vram > 0 ? "trow-off" : ""}`}
+              className={`trow ${mode === "no" && ready ? "trow-off" : ""}`}
               onClick={() => nav(`/model/${slugify(m.name)}`)}
             >
               <div className="trow-name">
                 <span className="t-name">{m.name}</span>
                 <span className="t-params">{m.params_b}B</span>
               </div>
-              <span className="t-col t-size">{bestSize} GB</span>
-              <span className="t-col t-ctx">{ctxK}K ctx</span>
-              <span className="t-col t-tks" style={{ color: tksColor(tks, ok) }}>
-                {vram > 0
-                  ? ok
-                    ? tks !== null ? `~${tks} tok/s` : "—"
-                    : "~0 tok/s"
-                  : "—"}
+              <span className="t-r t-mono">{bestV.file_gb} GB</span>
+              <span className="t-r t-mono t-dim">{(m.context / 1024).toFixed(0)}K ctx</span>
+              <span className="t-r t-mono t-tks" style={{ color: tksColor(tks, mode) }}>
+                {ready ? (tks !== null ? `~${tks} tok/s` : "—") : "—"}
               </span>
-              <span className="t-grade" style={{ color: g.color }}>{g.letter}</span>
-              <span className="t-quant">{bestQuant}</span>
+              <span className="t-c">
+                {ready && <ModeIcon mode={mode} />}
+              </span>
+              <span className="t-c t-grade" style={{ color: g.color }}>{g.letter}</span>
               <span className="t-arrow">›</span>
             </div>
           );
@@ -140,9 +142,10 @@ function ListPage() {
 /* ── Detail Page ──────────────── */
 
 function DetailPage() {
-  const { vram, bw } = useContext(GpuCtx);
+  const hw = useContext(Hw);
   const { slug } = useParams();
   const nav = useNavigate();
+  const ready = hw.vram > 0 || hw.ram > 0;
 
   const model = models.find((m) => slugify(m.name) === slug);
   if (!model) return <p style={{ color: "#888", padding: 40 }}>Model not found</p>;
@@ -162,31 +165,38 @@ function DetailPage() {
       <div className="d-table">
         <div className="d-thead">
           <span>Quant</span>
-          <span>File size</span>
-          <span>VRAM needed</span>
+          <span>File</span>
+          <span>VRAM</span>
           <span>Speed</span>
+          <span>Run</span>
           <span>Grade</span>
         </div>
         {model.variants.map((v) => {
-          const need = totalVram(v, model.config, CTX);
-          const st = vram > 0 ? canRun(need, vram) : "no";
-          const ok = st === "ok" || st === "partial";
-          const tks = ok ? estimateTokensPerSec(v, bw, vram) : null;
-          const g = vram > 0 ? grade(tks, ok) : { letter: "?", color: "#555" };
-          const col = tksColor(tks, ok);
+          const r = ready
+            ? evaluate(v, hw.vram, hw.gpuBw, hw.ram, hw.ramBw, model.config, CTX)
+            : { mode: "no" as RunMode, tks: null, vram_needed: totalVram(v, model.config, CTX) };
+          const g = ready ? gradeInfo(r.tks, r.mode) : { letter: "?", color: "#555" };
+          const col = tksColor(r.tks, r.mode);
 
           return (
-            <div key={v.quant} className={`d-row ${ok ? "" : "d-row-off"}`}>
+            <div key={v.quant} className={`d-row ${r.mode === "no" && ready ? "d-row-off" : ""}`}>
               <span className="d-quant">{v.quant}</span>
               <span>{v.file_gb} GB</span>
-              <span>{need} GB</span>
+              <span>{r.vram_needed} GB</span>
               <span className="d-tks" style={{ color: col }}>
-                {ok ? (tks ? `~${tks} tok/s` : "—") : "~0 tok/s"}
+                {r.tks !== null ? `~${r.tks} tok/s` : "—"}
               </span>
+              <span className="d-mode"><ModeIcon mode={r.mode} /></span>
               <span className="d-grade" style={{ color: g.color }}>{g.letter}</span>
             </div>
           );
         })}
+      </div>
+
+      <div className="d-legend">
+        <span><span className="mode-icon mode-gpu">⚡</span> GPU inference</span>
+        <span><span className="mode-icon mode-cpu">🐢</span> CPU inference (slower)</span>
+        <span><span className="mode-icon mode-no">✕</span> Can't run</span>
       </div>
 
       <div className="d-links">
@@ -216,19 +226,19 @@ function App() {
   }, []);
 
   const vram = gpu?.vram_gb ?? 0;
-  const bw = gpu ? (guessBandwidth(gpu.name) ?? 0) : 0;
+  const gpuBw = gpu ? (guessGpuBandwidth(gpu.gpuName) ?? 0) : 0;
+  const ram = gpu?.ram_gb ?? 0;
+  const ramBw = guessRamBandwidth();
 
   return (
-    <GpuCtx.Provider value={{ vram, bw }}>
+    <Hw.Provider value={{ vram, gpuBw, ram, ramBw }}>
       <HashRouter>
         <div className="app">
-          {/* Header */}
           <header>
             <h1>Can I Run This LLM?</h1>
             <p className="sub">Find out which LLMs your machine can actually run.</p>
           </header>
 
-          {/* HW bar */}
           <div className="hw-bar">
             {loading ? (
               <span className="hw-detecting">Detecting hardware…</span>
@@ -236,18 +246,24 @@ function App() {
               <>
                 <div className="hw-item">
                   <span className="hw-icon">⬡</span>
-                  <span className="hw-val">{gpu?.name ?? "Unknown GPU"}</span>
+                  <span className="hw-val">{gpu?.gpuName ?? "Unknown"}</span>
                 </div>
                 {vram > 0 && (
                   <div className="hw-item">
-                    <span className="hw-icon">⬢</span>
-                    <span className="hw-val">{vram} GB VRAM</span>
+                    <span className="hw-label">VRAM</span>
+                    <span className="hw-val">{vram} GB</span>
                   </div>
                 )}
-                {bw > 0 && (
+                {ram > 0 && (
                   <div className="hw-item">
-                    <span className="hw-icon">↕</span>
-                    <span className="hw-val">~{bw} GB/s</span>
+                    <span className="hw-label">RAM</span>
+                    <span className="hw-val">{ram} GB</span>
+                  </div>
+                )}
+                {gpuBw > 0 && (
+                  <div className="hw-item">
+                    <span className="hw-label">BW</span>
+                    <span className="hw-val">~{gpuBw} GB/s</span>
                   </div>
                 )}
                 <span className="hw-badge">WebGPU</span>
@@ -261,10 +277,12 @@ function App() {
             <Route path="/model/:slug" element={<DetailPage />} />
           </Routes>
 
-          <footer>Speed estimates are theoretical · memory-bandwidth bound · single-batch inference</footer>
+          <footer>
+            ⚡ = GPU inference (fast) · 🐢 = CPU/RAM inference (slow) · Speed estimates are theoretical
+          </footer>
         </div>
       </HashRouter>
-    </GpuCtx.Provider>
+    </Hw.Provider>
   );
 }
 
