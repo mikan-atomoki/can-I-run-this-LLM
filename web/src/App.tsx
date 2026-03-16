@@ -299,12 +299,20 @@ function DetailPage() {
 function App() {
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [oVram, setOVram] = useState<number | null>(null);
+  const [oBw, setOBw] = useState<number | null>(null);
+  const [oRam, setORam] = useState<number | null>(null);
 
   useEffect(() => { detectGpu().then((i) => { setGpu(i); setLoading(false); }); }, []);
 
-  const vram = gpu?.vram_gb ?? 0;
-  const gpuBw = gpu ? (guessGpuBandwidth(gpu.gpuName) ?? 0) : 0;
-  const ram = gpu?.ram_gb ?? 0;
+  const detectedVram = gpu?.vram_gb ?? 0;
+  const detectedBw = gpu ? (guessGpuBandwidth(gpu.gpuName) ?? 0) : 0;
+  const detectedRam = gpu?.ram_gb ?? 0;
+
+  const vram = oVram ?? detectedVram;
+  const gpuBw = oBw ?? detectedBw;
+  const ram = oRam ?? detectedRam;
   const ramBw = guessRamBandwidth();
 
   return (
@@ -319,20 +327,48 @@ function App() {
             {loading ? <span className="hw-detecting">Detecting hardware…</span> : (
               <>
                 <div className="hw-item"><span className="hw-icon">⬡</span><span className="hw-val">{gpu?.gpuName ?? "Unknown"}</span></div>
-                {gpu?.isAppleSilicon && gpu.unifiedMemory_gb ? (
-                  <div className="hw-item"><span className="hw-label">Unified</span><span className="hw-val">{gpu.unifiedMemory_gb} GB (~{vram} GB usable)</span></div>
+
+                {editing ? (
+                  <>
+                    <div className="hw-item">
+                      <span className="hw-label">VRAM</span>
+                      <input type="number" className="hw-input" value={vram || ""} min={0} step={1}
+                        onChange={(e) => setOVram(e.target.value ? Number(e.target.value) : null)} placeholder="GB" />
+                      <span className="hw-unit">GB</span>
+                    </div>
+                    <div className="hw-item">
+                      <span className="hw-label">RAM</span>
+                      <input type="number" className="hw-input" value={ram || ""} min={0} step={1}
+                        onChange={(e) => setORam(e.target.value ? Number(e.target.value) : null)} placeholder="GB" />
+                      <span className="hw-unit">GB</span>
+                    </div>
+                    <div className="hw-item">
+                      <span className="hw-label">BW</span>
+                      <input type="number" className="hw-input" value={gpuBw || ""} min={0} step={1}
+                        onChange={(e) => setOBw(e.target.value ? Number(e.target.value) : null)} placeholder="GB/s" />
+                      <span className="hw-unit">GB/s</span>
+                    </div>
+                    <button className="hw-edit-btn" onClick={() => setEditing(false)}>Done</button>
+                  </>
                 ) : (
                   <>
-                    {vram > 0 && <div className="hw-item"><span className="hw-label">VRAM</span><span className="hw-val">{vram} GB</span></div>}
-                    {ram > 0 && !gpu?.isAppleSilicon && <div className="hw-item"><span className="hw-label">RAM</span><span className="hw-val">{ram}+ GB</span></div>}
+                    {gpu?.isAppleSilicon && gpu.unifiedMemory_gb ? (
+                      <div className="hw-item"><span className="hw-label">Unified</span><span className="hw-val">{gpu.unifiedMemory_gb} GB (~{vram} GB usable)</span></div>
+                    ) : (
+                      <>
+                        {vram > 0 && <div className="hw-item"><span className="hw-label">VRAM</span><span className="hw-val">{vram} GB</span></div>}
+                        {ram > 0 && <div className="hw-item"><span className="hw-label">RAM</span><span className="hw-val">{ram}+ GB</span></div>}
+                      </>
+                    )}
+                    {gpuBw > 0 && <div className="hw-item"><span className="hw-label">BW</span><span className="hw-val">~{gpuBw} GB/s</span></div>}
+                    <span className="hw-badge">WebGPU</span>
+                    <button className="hw-edit-btn" onClick={() => setEditing(true)} title="Edit hardware specs">✎</button>
                   </>
                 )}
-                {gpuBw > 0 && <div className="hw-item"><span className="hw-label">BW</span><span className="hw-val">~{gpuBw} GB/s</span></div>}
-                <span className="hw-badge">WebGPU</span>
               </>
             )}
           </div>
-          <p className="hw-note">Estimates based on browser APIs. Actual specs may vary.</p>
+          <p className="hw-note">Estimates based on browser APIs. {!editing && "Click ✎ to adjust manually."}</p>
           <Routes>
             <Route path="/" element={<ListPage />} />
             <Route path="/model/:slug" element={<DetailPage />} />

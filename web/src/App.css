@@ -76,6 +76,40 @@ header h1 {
   padding: 2px 8px;
   border-radius: 4px;
 }
+.hw-input {
+  width: 56px;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 3px 6px;
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 0.82em;
+  text-align: center;
+}
+.hw-input:focus {
+  outline: none;
+  border-color: var(--green);
+}
+.hw-unit {
+  color: var(--muted);
+  font-size: 0.72em;
+}
+.hw-edit-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.78em;
+  transition: background 0.12s, color 0.12s;
+}
+.hw-edit-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
 .hw-note {
   text-align: center;
   color: var(--muted);
