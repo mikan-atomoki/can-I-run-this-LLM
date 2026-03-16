@@ -300,20 +300,15 @@ function DetailPage() {
 function App() {
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [oVram, setOVram] = useState<number | null>(null);
-  const [oBw, setOBw] = useState<number | null>(null);
-  const [oRam, setORam] = useState<number | null>(null);
+  const [presetIdx, setPresetIdx] = useState<number | null>(null);
 
   useEffect(() => { detectGpu().then((i) => { setGpu(i); setLoading(false); }); }, []);
 
-  const detectedVram = gpu?.vram_gb ?? 0;
-  const detectedBw = gpu ? (guessGpuBandwidth(gpu.gpuName) ?? 0) : 0;
-  const detectedRam = gpu?.ram_gb ?? 0;
-
-  const vram = oVram ?? detectedVram;
-  const gpuBw = oBw ?? detectedBw;
-  const ram = oRam ?? detectedRam;
+  // If preset selected, use it. Otherwise use detected values.
+  const preset = presetIdx !== null ? PRESETS[presetIdx] : null;
+  const vram = preset ? preset.vram : (gpu?.vram_gb ?? 0);
+  const gpuBw = preset ? preset.bw : (gpu ? (guessGpuBandwidth(gpu.gpuName) ?? 0) : 0);
+  const ram = preset ? preset.ram : (gpu?.ram_gb ?? 0);
   const ramBw = guessRamBandwidth();
 
   return (
@@ -327,63 +322,29 @@ function App() {
           <div className="hw-bar">
             {loading ? <span className="hw-detecting">Detecting hardware…</span> : (
               <>
-                <div className="hw-item"><span className="hw-icon">⬡</span><span className="hw-val">{gpu?.gpuName ?? "Unknown"}</span></div>
-
-                {editing ? (
-                  <>
-                    <select className="hw-preset" onChange={(e) => {
-                      const p = PRESETS[Number(e.target.value)];
-                      if (p) { setOVram(p.vram); setORam(p.ram); setOBw(p.bw); }
-                    }} defaultValue="">
-                      <option value="" disabled>Device preset…</option>
-                      {(() => {
-                        const cats = [...new Set(PRESETS.map(p => p.category))];
-                        return cats.map(cat => (
-                          <optgroup key={cat} label={cat}>
-                            {PRESETS.map((p, i) => p.category === cat ? <option key={i} value={i}>{p.label}</option> : null)}
-                          </optgroup>
-                        ));
-                      })()}
-                    </select>
-                    <div className="hw-item">
-                      <span className="hw-label">VRAM</span>
-                      <input type="number" className="hw-input" value={vram || ""} min={0} step={1}
-                        onChange={(e) => setOVram(e.target.value ? Number(e.target.value) : null)} placeholder="GB" />
-                      <span className="hw-unit">GB</span>
-                    </div>
-                    <div className="hw-item">
-                      <span className="hw-label">RAM</span>
-                      <input type="number" className="hw-input" value={ram || ""} min={0} step={1}
-                        onChange={(e) => setORam(e.target.value ? Number(e.target.value) : null)} placeholder="GB" />
-                      <span className="hw-unit">GB</span>
-                    </div>
-                    <div className="hw-item">
-                      <span className="hw-label">BW</span>
-                      <input type="number" className="hw-input" value={gpuBw || ""} min={0} step={1}
-                        onChange={(e) => setOBw(e.target.value ? Number(e.target.value) : null)} placeholder="GB/s" />
-                      <span className="hw-unit">GB/s</span>
-                    </div>
-                    <button className="hw-edit-btn" onClick={() => setEditing(false)}>Done</button>
-                  </>
-                ) : (
-                  <>
-                    {gpu?.isAppleSilicon && gpu.unifiedMemory_gb ? (
-                      <div className="hw-item"><span className="hw-label">Unified</span><span className="hw-val">{gpu.unifiedMemory_gb} GB (~{vram} GB usable)</span></div>
-                    ) : (
-                      <>
-                        {vram > 0 && <div className="hw-item"><span className="hw-label">VRAM</span><span className="hw-val">{vram} GB</span></div>}
-                        {ram > 0 && <div className="hw-item"><span className="hw-label">RAM</span><span className="hw-val">{ram}+ GB</span></div>}
-                      </>
-                    )}
-                    {gpuBw > 0 && <div className="hw-item"><span className="hw-label">BW</span><span className="hw-val">~{gpuBw} GB/s</span></div>}
-                    <span className="hw-badge">WebGPU</span>
-                    <button className="hw-edit-btn" onClick={() => setEditing(true)} title="Edit hardware specs">✎</button>
-                  </>
-                )}
+                <select className="hw-preset" value={presetIdx ?? ""} onChange={(e) => {
+                  const v = e.target.value;
+                  setPresetIdx(v === "" ? null : Number(v));
+                }}>
+                  <option value="">{gpu?.detected ? `${gpu.gpuName} (detected)` : "Select your device…"}</option>
+                  {(() => {
+                    const cats = [...new Set(PRESETS.map(p => p.category))];
+                    return cats.map(cat => (
+                      <optgroup key={cat} label={cat}>
+                        {PRESETS.map((p, i) => p.category === cat ? <option key={i} value={i}>{p.label}</option> : null)}
+                      </optgroup>
+                    ));
+                  })()}
+                </select>
+                <div className="hw-specs">
+                  {vram > 0 && <span className="hw-spec"><span className="hw-label">VRAM</span> {vram} GB</span>}
+                  {ram > 0 && <span className="hw-spec"><span className="hw-label">RAM</span> {ram} GB</span>}
+                  {gpuBw > 0 && <span className="hw-spec"><span className="hw-label">BW</span> ~{gpuBw} GB/s</span>}
+                </div>
               </>
             )}
           </div>
-          <p className="hw-note">Estimates based on browser APIs. {!editing && "Click ✎ to adjust manually."}</p>
+          <p className="hw-note">Select a device or use auto-detected specs. Estimates are approximate.</p>
           <Routes>
             <Route path="/" element={<ListPage />} />
             <Route path="/model/:slug" element={<DetailPage />} />
