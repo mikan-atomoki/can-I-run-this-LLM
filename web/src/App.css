@@ -76,6 +76,21 @@ header h1 {
   padding: 2px 8px;
   border-radius: 4px;
 }
+.hw-preset {
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--green);
+  font-family: var(--mono);
+  font-size: 0.78em;
+  cursor: pointer;
+  max-width: 220px;
+}
+.hw-preset:focus { outline: none; border-color: var(--green); }
+.hw-preset optgroup { color: var(--text2); font-style: normal; }
+.hw-preset option { color: var(--text); background: #111; }
+
 .hw-input {
   width: 56px;
   background: #0a0a0a;

@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, useNavigate, useParams } from "react-router-
 import { detectGpu, type GpuInfo } from "./lib/gpu";
 import { guessGpuBandwidth, guessRamBandwidth } from "./lib/bandwidth";
 import { evaluate, totalVram, type Model, type RunMode, type RunInfo } from "./lib/calc";
+import { PRESETS } from "./lib/presets";
 import modelsData from "./data/models.json";
 import "./App.css";
 
@@ -330,6 +331,20 @@ function App() {
 
                 {editing ? (
                   <>
+                    <select className="hw-preset" onChange={(e) => {
+                      const p = PRESETS[Number(e.target.value)];
+                      if (p) { setOVram(p.vram); setORam(p.ram); setOBw(p.bw); }
+                    }} defaultValue="">
+                      <option value="" disabled>Device preset…</option>
+                      {(() => {
+                        const cats = [...new Set(PRESETS.map(p => p.category))];
+                        return cats.map(cat => (
+                          <optgroup key={cat} label={cat}>
+                            {PRESETS.map((p, i) => p.category === cat ? <option key={i} value={i}>{p.label}</option> : null)}
+                          </optgroup>
+                        ));
+                      })()}
+                    </select>
                     <div className="hw-item">
                       <span className="hw-label">VRAM</span>
                       <input type="number" className="hw-input" value={vram || ""} min={0} step={1}
