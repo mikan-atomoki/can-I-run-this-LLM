@@ -43,6 +43,13 @@ class Command(BaseCommand):
         except (ValueError, TypeError):
             parameters = 0
 
+        file_size_gb = details.get('file_size_gb')
+        if file_size_gb is not None:
+            try:
+                file_size_gb = float(file_size_gb)
+            except (ValueError, TypeError):
+                file_size_gb = None
+
         mapping, created = LLMMapping.objects.get_or_create(
             name=name,
             defaults={
@@ -51,7 +58,11 @@ class Command(BaseCommand):
                 'quant_level': details.get('quant_level', ''),
                 'context_window': details.get('context_window', 0),
                 'cache_bit': details.get('cache_bit', 0),
-                'cuda_overhead': details.get('cuda_overhead', 0)
+                'cuda_overhead': details.get('cuda_overhead', 0),
+                'model_format': details.get('model_format', 'base'),
+                'file_size_gb': file_size_gb,
+                'base_model_name': details.get('base_model_name'),
+                'repo_id': details.get('repo_id'),
             }
         )
 
@@ -63,4 +74,8 @@ class Command(BaseCommand):
             mapping.context_window = details.get('context_window', 0)
             mapping.cache_bit = details.get('cache_bit', 0)
             mapping.cuda_overhead = details.get('cuda_overhead', 0)
+            mapping.model_format = details.get('model_format', 'base')
+            mapping.file_size_gb = file_size_gb
+            mapping.base_model_name = details.get('base_model_name')
+            mapping.repo_id = details.get('repo_id')
             mapping.save()

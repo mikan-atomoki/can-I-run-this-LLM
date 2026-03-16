@@ -1,14 +1,19 @@
 class ModelVRAMCalculator:
-    def __init__(self, model_config: dict, parameters: int, quant_level: str, context_window: int, cache_bit: int, cuda_overhead=0.5):
+    def __init__(self, model_config: dict, parameters: int, quant_level: str, context_window: int, cache_bit: int, cuda_overhead=0.5, file_size_gb=None):
         self.model_config = model_config
         self.parameters = parameters
         self.quant_level = quant_level
         self.context_window = context_window
         self.cache_bit = cache_bit
         self.cuda_overhead = cuda_overhead
+        self.file_size_gb = file_size_gb
         self.head_bit = self.quant_level # For simplification we assume lm_head_bit = quant_level
 
     def model_weights(self):
+        # If file_size_gb is provided (GGUF), use it directly as the model weight size
+        if self.file_size_gb is not None:
+            return round(self.file_size_gb, 2)
+
         # Define quantization factors for different precision levels
         bytes_per_weight = {
             "fp32":     4,
@@ -30,6 +35,18 @@ class ModelVRAMCalculator:
             "q2_k":     2.56 / 8,
             "q2":       2 / 8,
             "q1":       1 / 8,
+            "iq1_s":    1.5 / 8,
+            "iq1_m":    1.75 / 8,
+            "iq2_xxs":  2.06 / 8,
+            "iq2_xs":   2.31 / 8,
+            "iq2_s":    2.5 / 8,
+            "iq2_m":    2.7 / 8,
+            "iq3_xxs":  3.06 / 8,
+            "iq3_xs":   3.3 / 8,
+            "iq3_s":    3.5 / 8,
+            "iq3_m":    3.7 / 8,
+            "iq4_xs":   4.25 / 8,
+            "iq4_nl":   4.5 / 8,
         }
 
         if self.quant_level not in bytes_per_weight:

@@ -122,6 +122,23 @@ class ModelConfigurationForm(forms.Form):
         min_value=1
     )
 
+    file_size_gb = forms.FloatField(
+        required=False,
+        widget=forms.HiddenInput(),
+        help_text="GGUF file size in GB (auto-populated)",
+    )
+
+    gguf_variant = forms.ChoiceField(
+        choices=[],
+        required=False,
+        help_text="Select a GGUF variant",
+    )
+
+    def __init__(self, *args, **kwargs):
+        gguf_choices = kwargs.pop('gguf_choices', None)
+        super().__init__(*args, **kwargs)
+        if gguf_choices:
+            self.fields['gguf_variant'].choices = [("", "Select a variant")] + gguf_choices
 
 
 class WindowsSystemInformationForm(forms.Form):

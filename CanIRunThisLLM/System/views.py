@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from rest_framework.decorators import api_view
 from django.urls import reverse
 from django.template.loader import render_to_string
@@ -12,6 +12,7 @@ from .forms import (
 from VRAMCalculator.vram_calc import ModelVRAMCalculator
 from VRAMCalculator.canirunit import CanIRunIt
 from ModelExtractor.extractor import ModelExtractor
+from ModelExtractor.extractor_factory import create_extractor, parse_repo_id
 from EstimateTokenPerSecond.estimate_token_per_second import EstimateTokenPerSecond
 from .models import LLMMapping, AppleMSeriesProcessor
 import json
@@ -30,8 +31,48 @@ def get_llm_choices_mapping():
             "context_window": entry.context_window,
             "cache_bit": entry.cache_bit,
             "cuda_overhead": entry.cuda_overhead,
+            "model_format": entry.model_format,
+            "file_size_gb": entry.file_size_gb,
         }
     return mapping
+
+
+def fetch_model_info(request):
+    """AJAX endpoint: detect model format and return model info as JSON."""
+    url = request.GET.get("url", "").strip()
+    if not url:
+        return JsonResponse({"error": "No URL provided"}, status=400)
+
+    try:
+        repo_id = parse_repo_id(url)
+        extractor, model_format = create_extractor(url)
+
+        if model_format == "gguf":
+            variants = extractor.extract_variants()
+            return JsonResponse({
+                "format": "gguf",
+                "repo_id": repo_id,
+                "variants": variants,
+            })
+        elif model_format in ("gptq", "awq"):
+            info = extractor.extract()
+            return JsonResponse({
+                "format": model_format,
+                "repo_id": repo_id,
+                "model_info": info,
+            })
+        else:
+            # Base model - use existing extractor flow
+            config_file, tensor_file = extractor.download_model_config()
+            model_name = repo_id.split("/")[-1]
+            info = extractor.build_final_config(config_file, tensor_file, model_name)
+            return JsonResponse({
+                "format": "base",
+                "repo_id": repo_id,
+                "model_info": info,
+            })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
 
 
 @api_view(['POST'])
@@ -78,8 +119,12 @@ def update_table_view(request):
     columns = ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "fp16", "fp32"]
     colors_map = {1: "green", 2: "yellow", 3: "red"}
 
+    # Separate base models and GGUF models
+    base_models = LLMMapping.objects.filter(model_format="base")
+    gguf_models = LLMMapping.objects.filter(model_format="gguf")
+
     result = []
-    for mapping in LLMMapping.objects.all():
+    for mapping in base_models:
         row_result = {"row": mapping.name, "values": []}
         for quant in columns:
             vram_calculator = ModelVRAMCalculator(
@@ -110,7 +155,61 @@ def update_table_view(request):
             row_result["values"].append((colors_map[can_run_result], round(total_vram, 1), tks))
         result.append(row_result)
 
-    context = {"columns": columns, "chart_data": result, "os_choice": os_choice}
+    # Build GGUF chart data grouped by base_model_name
+    gguf_quant_columns = ["q2_k", "q3_k_m", "q4_k_m", "q5_k_m", "q6_k", "q8"]
+    gguf_grouped = {}
+    for mapping in gguf_models:
+        group_key = mapping.base_model_name or mapping.name
+        if group_key not in gguf_grouped:
+            gguf_grouped[group_key] = {}
+        gguf_grouped[group_key][mapping.quant_level] = mapping
+
+    gguf_result = []
+    for group_name, variants in sorted(gguf_grouped.items()):
+        row_result = {"row": group_name, "values": []}
+        for quant in gguf_quant_columns:
+            if quant in variants:
+                mapping = variants[quant]
+                vram_calculator = ModelVRAMCalculator(
+                    model_config=mapping.model_config or {},
+                    parameters=mapping.parameters / 1e9 if mapping.parameters else 0,
+                    quant_level=quant,
+                    context_window=system_context_window,
+                    cache_bit=mapping.cache_bit,
+                    file_size_gb=mapping.file_size_gb,
+                )
+                total_vram = vram_calculator.compute_vram_advanced() if mapping.model_config else (mapping.file_size_gb + 0.5 if mapping.file_size_gb else 0)
+                checker = CanIRunIt(
+                    required_vram=total_vram,
+                    system_vram=system_vram,
+                    system_ram=system_ram
+                )
+                can_run_result = checker.decide()
+
+                tks = None
+                if request.session.get("gpu_bandwidth") and request.session.get("ram_bandwidth"):
+                    estimator = EstimateTokenPerSecond(
+                        request.session.get("gpu_bandwidth"),
+                        request.session.get("ram_bandwidth"),
+                        system_vram, system_ram,
+                        quant,
+                        total_vram
+                    )
+                    tks, _ = estimator.calculate_token_per_second()
+
+                row_result["values"].append((colors_map[can_run_result], round(total_vram, 1), tks))
+            else:
+                # Variant not available
+                row_result["values"].append(("grey", None, None))
+        gguf_result.append(row_result)
+
+    context = {
+        "columns": columns,
+        "chart_data": result,
+        "gguf_columns": gguf_quant_columns,
+        "gguf_chart_data": gguf_result,
+        "os_choice": os_choice,
+    }
     print(os_choice)
     html = render_to_string("System/partials/table.html", context)
     return HttpResponse(html)
@@ -187,7 +286,10 @@ def stop_chart_view(request):
     colors_map = {1: "green", 2: "yellow", 3: "red"}
     chart_data = []
 
-    for mapping in LLMMapping.objects.all():
+    base_models = LLMMapping.objects.filter(model_format="base")
+    gguf_models = LLMMapping.objects.filter(model_format="gguf")
+
+    for mapping in base_models:
         row_data = {"row": mapping.name, "values": []}
         for quant_level in quant_levels:
             vram_calculator = ModelVRAMCalculator(
@@ -224,9 +326,63 @@ def stop_chart_view(request):
             row_data["values"].append((colors_map[can_run], round(total_vram, 2), tks))
         chart_data.append(row_data)
 
+    # Build GGUF chart data grouped by base_model_name
+    gguf_quant_columns = ["q2_k", "q3_k_m", "q4_k_m", "q5_k_m", "q6_k", "q8"]
+    gguf_grouped = {}
+    for mapping in gguf_models:
+        group_key = mapping.base_model_name or mapping.name
+        if group_key not in gguf_grouped:
+            gguf_grouped[group_key] = {}
+        gguf_grouped[group_key][mapping.quant_level] = mapping
+
+    gguf_chart_data = []
+    for group_name, variants in sorted(gguf_grouped.items()):
+        row_data = {"row": group_name, "values": []}
+        for quant in gguf_quant_columns:
+            if quant in variants:
+                mapping = variants[quant]
+                vram_calculator = ModelVRAMCalculator(
+                    model_config=mapping.model_config or {},
+                    parameters=mapping.parameters / 1e9 if mapping.parameters else 0,
+                    quant_level=quant,
+                    context_window=mapping.context_window,
+                    cache_bit=mapping.cache_bit,
+                    file_size_gb=mapping.file_size_gb,
+                )
+                if config_mode == "simple":
+                    total_vram = vram_calculator.compute_vram_simple()
+                elif mapping.model_config:
+                    total_vram = vram_calculator.compute_vram_advanced()
+                else:
+                    total_vram = (mapping.file_size_gb + 0.5) if mapping.file_size_gb else 0
+
+                can_run = CanIRunIt(
+                    required_vram=total_vram,
+                    system_vram=system_vram,
+                    system_ram=system_ram
+                ).decide()
+                tks = None
+
+                if gpu_bandwidth and ram_bandwidth and total_vram != 0:
+                    tks, _ = EstimateTokenPerSecond(
+                        gpu_bandwidth,
+                        ram_bandwidth,
+                        system_vram,
+                        system_ram,
+                        quant,
+                        total_vram
+                    ).calculate_token_per_second()
+
+                row_data["values"].append((colors_map[can_run], round(total_vram, 2), tks))
+            else:
+                row_data["values"].append(("grey", None, None))
+        gguf_chart_data.append(row_data)
+
     context = {
         "columns": quant_levels,
         "chart_data": chart_data,
+        "gguf_columns": gguf_quant_columns,
+        "gguf_chart_data": gguf_chart_data,
         "ram": system_ram,
         "vram": system_vram,
         "system_form": system_form,
@@ -414,6 +570,15 @@ def home(request):
         for key, value in session_data.items():
             request.session[key] = value
 
+        # Get file_size_gb for GGUF models
+        file_size_gb = None
+        raw_file_size = model_form.cleaned_data.get('file_size_gb')
+        if raw_file_size:
+            try:
+                file_size_gb = float(raw_file_size)
+            except (ValueError, TypeError):
+                file_size_gb = None
+
         # Instantiate the VRAM calculator.
         vram_calculator = ModelVRAMCalculator(
             model_config={
@@ -425,7 +590,8 @@ def home(request):
             parameters=parameters_model,
             quant_level=quantization_level,
             context_window=context_window,
-            cache_bit=cache_bit
+            cache_bit=cache_bit,
+            file_size_gb=file_size_gb,
         )
 
         if configuration_mode == "simple":
