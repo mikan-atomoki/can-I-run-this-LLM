@@ -89,6 +89,40 @@ header h1 {
   gap: 12px;
   margin-bottom: 8px;
   padding: 0 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sort-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.sort-label {
+  font-size: 0.72em;
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-right: 4px;
+}
+.sort-btn {
+  font-family: var(--mono);
+  font-size: 0.72em;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text2);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.sort-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.sort-active {
+  background: var(--surface2);
+  color: var(--green);
+  border-color: var(--green);
 }
 .search-box {
   display: flex;
@@ -121,7 +155,7 @@ header h1 {
 /* ── Column headers ───────────── */
 .col-header {
   display: grid;
-  grid-template-columns: 1fr 80px 80px 110px 44px 44px;
+  grid-template-columns: 1fr 52px 72px 64px 100px 40px 40px;
   padding: 8px 16px 8px 40px;
   font-size: 0.68em;
   text-transform: uppercase;
@@ -141,7 +175,7 @@ header h1 {
 
 .trow {
   display: grid;
-  grid-template-columns: 1fr 80px 80px 110px 44px 44px 20px;
+  grid-template-columns: 1fr 52px 72px 64px 100px 40px 40px 20px;
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid #151515;
@@ -191,6 +225,9 @@ header h1 {
   color: var(--text2);
 }
 .t-dim { color: var(--muted); }
+.t-bench {
+  font-weight: 700;
+}
 .t-tks {
   font-weight: 700;
 }
@@ -333,6 +370,14 @@ header h1 {
   transition: background 0.1s;
 }
 .d-mode { text-align: center; }
+
+.d-chip-score {
+  font-weight: 700;
+}
+.d-bench-note {
+  color: var(--muted);
+  font-style: italic;
+}
 
 .d-legend {
   display: flex;

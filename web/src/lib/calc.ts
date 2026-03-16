@@ -15,6 +15,7 @@ export interface Model {
   name: string;
   params_b: number;
   context: number;
+  bench: number;       // MMLU-approximate score (0-100)
   config: ModelConfig;
   variants: Variant[];
   hf?: string;
