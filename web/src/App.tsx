@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
+import { HashRouter, Routes, Route, useNavigate, useParams } from "react-router-dom";
 import { detectGpu, type GpuInfo } from "./lib/gpu";
 import { guessBandwidth } from "./lib/bandwidth";
 import {
@@ -11,36 +12,33 @@ import modelsData from "./data/models.json";
 import "./App.css";
 
 const models = modelsData as Model[];
+const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
-/* ── helpers ─────────────────────────────────────── */
+/* ── Context for GPU info ─────── */
+const GpuCtx = createContext<{ vram: number; bw: number }>({ vram: 0, bw: 0 });
 
-function bestRunnableVariant(
-  model: Model,
-  vram: number,
-  bw: number,
-  ctx: number
-) {
+/* ── helpers ──────────────────── */
+
+function bestResult(model: Model, vram: number, bw: number, ctx: number) {
   for (let i = model.variants.length - 1; i >= 0; i--) {
     const v = model.variants[i];
     const need = totalVram(v, model.config, ctx);
     if (canRun(need, vram) === "ok") {
-      return { v, tks: estimateTokensPerSec(v, bw, vram), need };
+      return { v, tks: estimateTokensPerSec(v, bw, vram), runnable: true };
     }
   }
-  // smallest as partial?
   const v = model.variants[0];
   const need = totalVram(v, model.config, ctx);
-  const st = canRun(need, vram);
-  if (st !== "no")
-    return { v, tks: estimateTokensPerSec(v, bw, vram), need };
-  return null;
+  if (canRun(need, vram) !== "no") {
+    return { v, tks: estimateTokensPerSec(v, bw, vram), runnable: true };
+  }
+  return { v, tks: null, runnable: false };
 }
 
 function perfColor(tks: number | null): string {
-  if (tks === null) return "var(--c-muted)";
-  if (tks >= 40) return "#22c55e";
-  if (tks >= 25) return "#4ade80";
-  if (tks >= 15) return "#a3e635";
+  if (tks === null) return "#555";
+  if (tks >= 30) return "#22c55e";
+  if (tks >= 15) return "#4ade80";
   if (tks >= 8) return "#facc15";
   if (tks >= 4) return "#fb923c";
   return "#ef4444";
@@ -55,121 +53,110 @@ function perfLabel(tks: number | null): string {
   return "Very slow";
 }
 
-/* ── ModelCard ────────────────────────────────────── */
+/* ── List Page ────────────────── */
 
-function ModelCard({
-  model,
-  vram,
-  bw,
-  ctx,
-  onClick,
-}: {
-  model: Model;
-  vram: number;
-  bw: number;
-  ctx: number;
-  onClick: () => void;
-}) {
-  const best = vram > 0 ? bestRunnableVariant(model, vram, bw, ctx) : null;
-  const runnable = best !== null;
-  const tks = best?.tks ?? null;
-  const color = perfColor(tks);
+function ListPage() {
+  const { vram, bw } = useContext(GpuCtx);
+  const nav = useNavigate();
+  const ctx = 4096;
+
+  const sorted = [...models].sort((a, b) => {
+    if (vram <= 0) return 0;
+    const ra = bestResult(a, vram, bw, ctx);
+    const rb = bestResult(b, vram, bw, ctx);
+    if (ra.runnable && !rb.runnable) return -1;
+    if (!ra.runnable && rb.runnable) return 1;
+    return (rb.tks ?? 0) - (ra.tks ?? 0);
+  });
 
   return (
-    <div
-      className={`card ${runnable ? "" : "card-disabled"}`}
-      onClick={onClick}
-      style={{ "--accent": color } as React.CSSProperties}
-    >
-      <div className="card-top">
-        <div className="card-glow" />
-        <h3 className="card-name">{model.name}</h3>
-        <span className="card-params">{model.params_b}B params</span>
-      </div>
-      <div className="card-bottom">
-        {vram > 0 ? (
-          runnable ? (
-            <>
-              <span className="card-tks" style={{ color }}>
-                {tks ? `${tks} tk/s` : "—"}
-              </span>
-              <span className="card-perf" style={{ color }}>
-                {perfLabel(tks)}
-              </span>
-              <span className="card-quant">{best.v.quant}</span>
-            </>
-          ) : (
-            <span className="card-cant">Not enough VRAM</span>
-          )
-        ) : (
-          <span className="card-cant">Detecting…</span>
-        )}
-      </div>
-    </div>
+    <section className="list">
+      {sorted.map((m) => {
+        const r = vram > 0 ? bestResult(m, vram, bw, ctx) : null;
+        const tks = r?.tks ?? null;
+        const runnable = r?.runnable ?? false;
+        const color = perfColor(tks);
+
+        return (
+          <div
+            key={m.name}
+            className={`row ${!runnable && vram > 0 ? "row-off" : ""}`}
+            onClick={() => nav(`/model/${slugify(m.name)}`)}
+          >
+            <div className="row-indicator" style={{ background: vram > 0 ? color : "#333" }} />
+            <div className="row-main">
+              <span className="row-name">{m.name}</span>
+              <span className="row-params">{m.params_b}B</span>
+            </div>
+            <div className="row-right">
+              {vram > 0 && runnable && tks && (
+                <>
+                  <span className="row-tks" style={{ color }}>{tks} tk/s</span>
+                  <span className="row-perf" style={{ color }}>{perfLabel(tks)}</span>
+                </>
+              )}
+              {vram > 0 && !runnable && (
+                <span className="row-cant">Can't run</span>
+              )}
+              <span className="row-arrow">›</span>
+            </div>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
-/* ── DetailPage ──────────────────────────────────── */
+/* ── Detail Page ──────────────── */
 
-function DetailPage({
-  model,
-  vram,
-  bw,
-  ctx,
-  onBack,
-}: {
-  model: Model;
-  vram: number;
-  bw: number;
-  ctx: number;
-  onBack: () => void;
-}) {
+function DetailPage() {
+  const { vram, bw } = useContext(GpuCtx);
+  const { slug } = useParams();
+  const nav = useNavigate();
+  const ctx = 4096;
+
+  const model = models.find((m) => slugify(m.name) === slug);
+  if (!model) return <div className="detail"><p>Model not found</p></div>;
+
   return (
     <div className="detail">
-      <button className="back-btn" onClick={onBack}>
-        ← Back
-      </button>
+      <button className="back-btn" onClick={() => nav("/")}>← Back</button>
 
       <div className="detail-hero">
         <h2>{model.name}</h2>
-        <div className="detail-meta">
-          <span>{model.params_b}B parameters</span>
-          <span>Context: {(model.context / 1024).toFixed(0)}K</span>
+        <div className="detail-chips">
+          <span className="chip">{model.params_b}B params</span>
+          <span className="chip">{(model.context / 1024).toFixed(0)}K context</span>
         </div>
       </div>
 
-      <div className="detail-table">
-        <div className="dt-header">
-          <span>Quantization</span>
-          <span>File size</span>
-          <span>VRAM needed</span>
-          <span>Speed</span>
-          <span>Status</span>
-        </div>
+      <div className="detail-variants">
         {model.variants.map((v) => {
           const need = totalVram(v, model.config, ctx);
-          const status = vram > 0 ? canRun(need, vram) : "no";
-          const runnable = status === "ok" || status === "partial";
-          const tks = runnable
-            ? estimateTokensPerSec(v, bw, vram)
-            : null;
-          const color = runnable ? perfColor(tks) : "var(--c-muted)";
+          const st = vram > 0 ? canRun(need, vram) : "no";
+          const runnable = st === "ok" || st === "partial";
+          const tks = runnable ? estimateTokensPerSec(v, bw, vram) : null;
+          const color = runnable ? perfColor(tks) : "#333";
 
           return (
-            <div
-              key={v.quant}
-              className={`dt-row ${runnable ? "" : "dt-row-off"}`}
-              style={{ "--row-color": color } as React.CSSProperties}
-            >
-              <span className="dt-quant">{v.quant}</span>
-              <span>{v.file_gb} GB</span>
-              <span>{need} GB</span>
-              <span style={{ color, fontWeight: 600 }}>
-                {tks ? `${tks} tk/s` : "—"}
-              </span>
-              <span className="dt-status" style={{ color }}>
-                {runnable ? perfLabel(tks) : "Can't run"}
-              </span>
+            <div key={v.quant} className={`var-card ${runnable ? "" : "var-off"}`}>
+              <div className="var-bar" style={{ background: color }} />
+              <div className="var-body">
+                <div className="var-top">
+                  <span className="var-quant">{v.quant}</span>
+                  <span className="var-size">{v.file_gb} GB</span>
+                </div>
+                <div className="var-bottom">
+                  {runnable ? (
+                    <>
+                      <span className="var-tks" style={{ color }}>{tks ? `${tks} tk/s` : "—"}</span>
+                      <span className="var-need">{need} GB VRAM</span>
+                    </>
+                  ) : (
+                    <span className="var-cant">Needs {need} GB VRAM</span>
+                  )}
+                </div>
+              </div>
             </div>
           );
         })}
@@ -177,22 +164,12 @@ function DetailPage({
 
       <div className="detail-links">
         {model.hf && (
-          <a
-            href={`https://huggingface.co/${model.hf}`}
-            target="_blank"
-            rel="noopener"
-            className="link-btn"
-          >
+          <a href={`https://huggingface.co/${model.hf}`} target="_blank" rel="noopener" className="link-btn">
             🤗 Base Model
           </a>
         )}
         {model.gguf && (
-          <a
-            href={`https://huggingface.co/${model.gguf}`}
-            target="_blank"
-            rel="noopener"
-            className="link-btn"
-          >
+          <a href={`https://huggingface.co/${model.gguf}`} target="_blank" rel="noopener" className="link-btn">
             📦 GGUF Files
           </a>
         )}
@@ -201,77 +178,43 @@ function DetailPage({
   );
 }
 
-/* ── App ─────────────────────────────────────────── */
+/* ── App ──────────────────────── */
 
 function App() {
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Model | null>(null);
-  const ctx = 4096;
 
   useEffect(() => {
-    detectGpu().then((info) => {
-      setGpu(info);
-      setLoading(false);
-    });
+    detectGpu().then((info) => { setGpu(info); setLoading(false); });
   }, []);
 
   const vram = gpu?.vram_gb ?? 0;
   const bw = gpu ? (guessBandwidth(gpu.name) ?? 0) : 0;
 
-  const sorted = [...models].sort((a, b) => {
-    if (vram <= 0) return 0;
-    const ba = bestRunnableVariant(a, vram, bw, ctx);
-    const bb = bestRunnableVariant(b, vram, bw, ctx);
-    if (ba && !bb) return -1;
-    if (!ba && bb) return 1;
-    return (bb?.tks ?? 0) - (ba?.tks ?? 0);
-  });
-
-  if (selected) {
-    return (
-      <div className="app">
-        <DetailPage
-          model={selected}
-          vram={vram}
-          bw={bw}
-          ctx={ctx}
-          onBack={() => setSelected(null)}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="app">
-      <header>
-        <h1>Can I Run This LLM?</h1>
-        <p className="tagline">
-          {loading
-            ? "Detecting your GPU…"
-            : gpu?.detected
-              ? <>Detected <strong>{gpu.name}</strong>{vram > 0 && <> · {vram} GB VRAM</>}{bw > 0 && <> · {bw} GB/s</>}</>
-              : "Could not detect GPU"}
-        </p>
-      </header>
-
-      <section className="grid">
-        {sorted.map((m) => (
-          <ModelCard
-            key={m.name}
-            model={m}
-            vram={vram}
-            bw={bw}
-            ctx={ctx}
-            onClick={() => setSelected(m)}
-          />
-        ))}
-      </section>
-
-      <footer>
-        Speed estimates are theoretical (memory-bandwidth bound, single-batch inference).
-      </footer>
-    </div>
+    <GpuCtx.Provider value={{ vram, bw }}>
+      <HashRouter>
+        <div className="app">
+          <header>
+            <h1>Can I Run This LLM?</h1>
+            <p className="tagline">
+              {loading
+                ? "Detecting your GPU…"
+                : gpu?.detected
+                  ? <>{gpu.name}{vram > 0 && <> · {vram} GB</>}{bw > 0 && <> · {bw} GB/s</>}</>
+                  : "Could not detect GPU — results shown without speed estimates"}
+            </p>
+          </header>
+          <Routes>
+            <Route path="/" element={<ListPage />} />
+            <Route path="/model/:slug" element={<DetailPage />} />
+          </Routes>
+          <footer>
+            Speed = theoretical peak (memory-bandwidth bound).
+          </footer>
+        </div>
+      </HashRouter>
+    </GpuCtx.Provider>
   );
 }
 
