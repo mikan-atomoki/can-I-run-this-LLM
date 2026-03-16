@@ -87,3 +87,38 @@ export function evaluate(
 
   return { mode: "no", tks: null, vram_needed: needed };
 }
+
+/**
+ * Estimate quality degradation from quantization.
+ *
+ * Based on empirical observations from perplexity benchmarks:
+ * - Larger models are more resilient to quantization
+ * - Lower bpw = more degradation
+ * - Below ~3 bpw, quality drops sharply especially for small models
+ *
+ * Returns estimated score after quantization (always <= baseBench).
+ * This is an APPROXIMATION — actual results vary by model and task.
+ */
+export function estimateQuantizedScore(baseBench: number, bpw: number, params_b: number): number {
+  if (bpw >= 16) return baseBench; // FP16 = no degradation
+
+  // Size resilience factor: larger models lose less from quantization
+  // 70B+ models are very resilient, <3B models are fragile
+  const sizeResilience = Math.min(1, 0.5 + 0.5 * Math.log10(Math.max(params_b, 1)) / Math.log10(70));
+
+  // Base degradation curve by bpw (at ~7B model size reference)
+  // These are approximate percentage-point losses on MMLU-like benchmarks
+  let baseLoss: number;
+  if (bpw >= 8)       baseLoss = 0.3;   // Q8: negligible
+  else if (bpw >= 6)  baseLoss = 1.0;   // Q6_K
+  else if (bpw >= 5)  baseLoss = 2.0;   // Q5_K_M
+  else if (bpw >= 4)  baseLoss = 3.5;   // Q4_K_M
+  else if (bpw >= 3)  baseLoss = 7.0;   // Q3_K_M
+  else                baseLoss = 15.0;  // Q2 and below
+
+  // Adjust loss by model size: small models lose more, large models lose less
+  const adjustedLoss = baseLoss * (1.5 - sizeResilience * 0.8);
+
+  const result = Math.round(baseBench - adjustedLoss);
+  return Math.max(result, Math.round(baseBench * 0.5)); // floor at 50% of original
+}

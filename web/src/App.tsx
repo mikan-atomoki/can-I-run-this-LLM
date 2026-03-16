@@ -2,7 +2,7 @@ import { useEffect, useState, createContext, useContext, useMemo } from "react";
 import { HashRouter, Routes, Route, useNavigate, useParams } from "react-router-dom";
 import { detectGpu, type GpuInfo } from "./lib/gpu";
 import { guessGpuBandwidth, guessRamBandwidth } from "./lib/bandwidth";
-import { evaluate, totalVram, type Model, type RunMode, type RunInfo } from "./lib/calc";
+import { evaluate, totalVram, estimateQuantizedScore, type Model, type RunMode, type RunInfo } from "./lib/calc";
 import { PRESETS } from "./lib/presets";
 import modelsData from "./data/models.json";
 import "./App.css";
@@ -17,32 +17,37 @@ const Hw = createContext<HwCtx>({ vram: 0, gpuBw: 0, ram: 0, ramBw: 0 });
 
 /* ── helpers ──────────────────── */
 
-function bestEval(m: Model, hw: HwCtx): RunInfo {
+interface EvalResult extends RunInfo { qScore: number; variantIdx: number }
+
+function bestEval(m: Model, hw: HwCtx): EvalResult {
   for (let i = m.variants.length - 1; i >= 0; i--) {
     const r = evaluate(m.variants[i], hw.vram, hw.gpuBw, hw.ram, hw.ramBw, m.config, CTX);
-    if (r.mode === "gpu") return r;
+    if (r.mode === "gpu") return { ...r, qScore: estimateQuantizedScore(m.bench, m.variants[i].bpw, m.params_b), variantIdx: i };
   }
-  return evaluate(m.variants[0], hw.vram, hw.gpuBw, hw.ram, hw.ramBw, m.config, CTX);
+  const r = evaluate(m.variants[0], hw.vram, hw.gpuBw, hw.ram, hw.ramBw, m.config, CTX);
+  return { ...r, qScore: estimateQuantizedScore(m.bench, m.variants[0].bpw, m.params_b), variantIdx: 0 };
 }
 
-/** Find the smartest model that runs comfortably (>=8 tok/s GPU) with optional tag filter */
-function recommend(hw: HwCtx, tag?: string): { model: Model; info: RunInfo; variant: string } | null {
+/** Find the smartest model that runs comfortably (>=8 tok/s GPU) with optional tag filter.
+ *  Uses quantized score (not base score) to rank — so a 70B@Q4 might beat a 14B@Q8 if the
+ *  quantized 70B is still smarter. */
+function recommend(hw: HwCtx, tag?: string): { model: Model; info: RunInfo; variant: string; qScore: number } | null {
   const ready = hw.vram > 0 || hw.ram > 0;
   if (!ready) return null;
 
-  let best: { model: Model; info: RunInfo; variant: string } | null = null;
+  let best: { model: Model; info: RunInfo; variant: string; qScore: number } | null = null;
 
   for (const m of models) {
     if (tag && !m.tags.includes(tag)) continue;
 
-    // Try all variants, find best GPU one with comfortable speed
     for (let i = m.variants.length - 1; i >= 0; i--) {
       const r = evaluate(m.variants[i], hw.vram, hw.gpuBw, hw.ram, hw.ramBw, m.config, CTX);
       if (r.mode === "gpu" && r.tks !== null && r.tks >= COMFORTABLE_TKS) {
-        if (!best || m.bench > best.model.bench || (m.bench === best.model.bench && (r.tks ?? 0) > (best.info.tks ?? 0))) {
-          best = { model: m, info: r, variant: m.variants[i].quant };
+        const qScore = estimateQuantizedScore(m.bench, m.variants[i].bpw, m.params_b);
+        if (!best || qScore > best.qScore || (qScore === best.qScore && (r.tks ?? 0) > (best.info.tks ?? 0))) {
+          best = { model: m, info: r, variant: m.variants[i].quant, qScore };
         }
-        break; // found best variant for this model
+        break;
       }
     }
   }
@@ -95,7 +100,7 @@ type SortKey = "speed" | "size" | "score";
 /* ── Recommendation Cards ────── */
 
 function RecCard({ rec, label, icon, onClick }: {
-  rec: { model: Model; info: RunInfo; variant: string } | null;
+  rec: { model: Model; info: RunInfo; variant: string; qScore: number } | null;
   label: string; icon: string;
   onClick: (m: Model) => void;
 }) {
@@ -106,7 +111,7 @@ function RecCard({ rec, label, icon, onClick }: {
     </div>
   );
 
-  const { model, info, variant } = rec;
+  const { model, info, variant, qScore } = rec;
   return (
     <div className="rec-card" onClick={() => onClick(model)}>
       <div className="rec-header"><span className="rec-icon">{icon}</span><span className="rec-label">{label}</span></div>
@@ -115,8 +120,8 @@ function RecCard({ rec, label, icon, onClick }: {
         <span className="rec-tks" style={{ color: tksColor(info.tks, info.mode) }}>
           ⚡ ~{info.tks} tok/s
         </span>
-        <span className="rec-bench" style={{ color: benchColor(model.bench) }}>
-          Score {model.bench}
+        <span className="rec-bench" style={{ color: benchColor(qScore) }}>
+          ~{qScore}pt
         </span>
         <span className="rec-quant">{variant}</span>
       </div>
@@ -156,7 +161,13 @@ function ListPage() {
         return (b.bench / b.variants[0].file_gb) - (a.bench / a.variants[0].file_gb);
       }
       if (sortBy === "size") return a.variants[0].file_gb - b.variants[0].file_gb;
-      if (b.bench !== a.bench) return b.bench - a.bench;
+      // Score sort: use quantized score when HW is known
+      if (ready) {
+        const qa = bestEval(a, hw).qScore, qb = bestEval(b, hw).qScore;
+        if (qb !== qa) return qb - qa;
+      } else {
+        if (b.bench !== a.bench) return b.bench - a.bench;
+      }
       return a.params_b - b.params_b;
     };
 
@@ -205,7 +216,7 @@ function ListPage() {
       {/* Table */}
       <div className="col-header">
         <span className="ch-name">Model</span>
-        <span className={`ch-r ${sortBy === "score" ? "ch-active" : ""}`}>Score</span>
+        <span className={`ch-r ${sortBy === "score" ? "ch-active" : ""}`}>Est.Score</span>
         <span className={`ch-r ${sortBy === "size" ? "ch-active" : ""}`}>Size</span>
         <span className="ch-r">Ctx</span>
         <span className={`ch-r ${sortBy === "speed" ? "ch-active" : ""}`}>Speed</span>
@@ -225,7 +236,7 @@ function ListPage() {
                   {m.tags.map((t) => <span key={t} className="t-tag" title={TAG_LABEL[t]?.name}>{TAG_LABEL[t]?.icon}</span>)}
                 </div>
               </div>
-              <span className={`t-r t-mono t-bench ${sortBy === "score" ? "t-hl" : ""}`} style={{ color: benchColor(m.bench) }}>{m.bench}</span>
+              <span className={`t-r t-mono t-bench ${sortBy === "score" ? "t-hl" : ""}`} style={{ color: benchColor(r.qScore) }} title={`Base: ${m.bench} → ~${r.qScore} after quantization`}>~{r.qScore}</span>
               <span className={`t-r t-mono ${sortBy === "size" ? "t-hl" : ""}`}>{m.variants[0].file_gb} GB</span>
               <span className="t-r t-mono t-dim">{(m.context / 1024).toFixed(0)}K</span>
               <span className={`t-r t-mono t-tks ${sortBy === "speed" ? "t-hl" : ""}`} style={{ color: tksColor(r.tks, r.mode) }}>
@@ -298,20 +309,23 @@ function DetailPage() {
 
       <div className="d-table">
         <div className="d-thead">
-          <span>Quant</span><span>File</span><span>VRAM</span><span>Speed</span><span>Run</span><span>Grade</span>
+          <span>Quant</span><span>File</span><span>VRAM</span><span>Est. Score</span><span>Speed</span><span>Run</span>
         </div>
         {model.variants.map((v) => {
           const r = ready ? evaluate(v, hw.vram, hw.gpuBw, hw.ram, hw.ramBw, model.config, CTX)
             : { mode: "no" as RunMode, tks: null, vram_needed: totalVram(v, model.config, CTX) };
-          const g = ready ? gradeInfo(r.tks, r.mode) : { letter: "?", color: "#555" };
+          const qScore = estimateQuantizedScore(model.bench, v.bpw, model.params_b);
+          const scoreDrop = model.bench - qScore;
           return (
             <div key={v.quant} className={`d-row ${r.mode === "no" && ready ? "d-row-off" : ""}`}>
               <span className="d-quant">{v.quant}</span>
               <span>{v.file_gb} GB</span>
               <span>{r.vram_needed} GB</span>
+              <span className="d-qscore" style={{ color: benchColor(qScore) }}>
+                ~{qScore} <span className="d-qdrop">{scoreDrop > 0 ? `(-${scoreDrop})` : ""}</span>
+              </span>
               <span className="d-tks" style={{ color: tksColor(r.tks, r.mode) }}>{r.tks ? `~${r.tks} tok/s` : "—"}</span>
               <span className="d-mode"><ModeIcon mode={r.mode} /></span>
-              <span className="d-grade" style={{ color: g.color }}>{g.letter}</span>
             </div>
           );
         })}
@@ -319,8 +333,11 @@ function DetailPage() {
 
       <div className="d-legend">
         <span>⚡ GPU</span><span>🐢 CPU</span><span className="mode-no">✕ Can't run</span>
-        <span className="d-bench-note">Score ≈ MMLU (higher = smarter)</span>
       </div>
+      <p className="d-disclaimer">
+        Est. Score = estimated quality after quantization (base: {model.bench}). Lower-bit quantization reduces quality, especially on smaller models.
+        These are approximations based on empirical data — actual results vary by model and task.
+      </p>
 
       <div className="d-links">
         {model.hf && <a href={`https://huggingface.co/${model.hf}`} target="_blank" rel="noopener" className="d-link">🤗 Base Model</a>}

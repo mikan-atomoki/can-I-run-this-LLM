@@ -503,7 +503,7 @@ header h1 {
 /* ── Detail table columns ─────── */
 .d-thead {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr 0.9fr 1.1fr 0.5fr 0.5fr;
+  grid-template-columns: 1.1fr 0.8fr 0.8fr 1fr 1fr 0.4fr;
   padding: 10px 20px;
   font-size: 0.7em;
   text-transform: uppercase;
@@ -515,7 +515,7 @@ header h1 {
 }
 .d-row {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr 0.9fr 1.1fr 0.5fr 0.5fr;
+  grid-template-columns: 1.1fr 0.8fr 0.8fr 1fr 1fr 0.4fr;
   padding: 11px 20px;
   font-size: 0.85em;
   font-family: var(--mono);
@@ -524,12 +524,21 @@ header h1 {
   transition: background 0.1s;
 }
 .d-mode { text-align: center; }
+.d-qscore { font-weight: 600; }
+.d-qdrop { font-size: 0.8em; color: var(--muted); }
 
 .d-chip-score {
   font-weight: 700;
 }
 .d-bench-note {
   color: var(--muted);
+  font-style: italic;
+}
+.d-disclaimer {
+  font-size: 0.7em;
+  color: var(--muted);
+  margin-top: 10px;
+  line-height: 1.5;
   font-style: italic;
 }
 
